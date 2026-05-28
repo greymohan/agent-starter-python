@@ -141,49 +141,48 @@ async def my_agent(ctx: JobContext):
             )
 
         session = AgentSession(llm=llm)
+        await ctx.connect()
         await session.start(
             agent=Agent(instructions=prompt or "You are a helpful voice assistant."),
             room=ctx.room,
         )
+    else:
+        # Set up a voice AI pipeline using OpenAI, Cartesia, Deepgram, and the LiveKit turn detector
+        session = AgentSession(
+            # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
+            # See all available models at https://docs.livekit.io/agents/models/stt/
+            stt=deepgram.STT(model="nova-3", language="multi"),
+            # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
+            # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
+            tts=cartesia.TTS(model="sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
+            # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
+            # See more at https://docs.livekit.io/agents/build/turns
+            turn_detection=MultilingualModel(),
+            vad=ctx.proc.userdata["vad"],
+            # allow the LLM to generate a response while waiting for the end of turn
+            # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
+            preemptive_generation=True,
+        )
+
+        # Start the session, which initializes the voice pipeline and warms up the models
+        await session.start(
+            agent=Assistant(),
+            room=ctx.room,
+        )
+
+        # # Add a virtual avatar to the session, if desired
+        # # For other providers, see https://docs.livekit.io/agents/models/avatar/
+        # avatar = anam.AvatarSession(
+        #     persona_config=anam.PersonaConfig(
+        #         name="...",
+        #         avatarId="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/anam
+        #     ),
+        # )
+        # # Start the avatar and wait for it to join
+        # await avatar.start(session, room=ctx.room)
+
+        # Join the room and connect to the user
         await ctx.connect()
-        return
-
-    # Set up a voice AI pipeline using OpenAI, Cartesia, Deepgram, and the LiveKit turn detector
-    session = AgentSession(
-        # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
-        # See all available models at https://docs.livekit.io/agents/models/stt/
-        stt=deepgram.STT(model="nova-3", language="multi"),
-        # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
-        # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=cartesia.TTS(model="sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
-        # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
-        # See more at https://docs.livekit.io/agents/build/turns
-        turn_detection=MultilingualModel(),
-        vad=ctx.proc.userdata["vad"],
-        # allow the LLM to generate a response while waiting for the end of turn
-        # See more at https://docs.livekit.io/agents/build/audio/#preemptive-generation
-        preemptive_generation=True,
-    )
-
-    # Start the session, which initializes the voice pipeline and warms up the models
-    await session.start(
-        agent=Assistant(),
-        room=ctx.room,
-    )
-
-    # # Add a virtual avatar to the session, if desired
-    # # For other providers, see https://docs.livekit.io/agents/models/avatar/
-    # avatar = anam.AvatarSession(
-    #     persona_config=anam.PersonaConfig(
-    #         name="...",
-    #         avatarId="...",  # See https://docs.livekit.io/agents/models/avatar/plugins/anam
-    #     ),
-    # )
-    # # Start the avatar and wait for it to join
-    # await avatar.start(session, room=ctx.room)
-
-    # Join the room and connect to the user
-    await ctx.connect()
 
 
 if __name__ == "__main__":
