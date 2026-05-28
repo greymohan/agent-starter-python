@@ -1,3 +1,4 @@
+import json
 import logging
 import textwrap
 
@@ -10,7 +11,7 @@ from livekit.agents import (
     JobProcess,
     cli,
 )
-from livekit.plugins import cartesia, deepgram, openai, silero
+from livekit.plugins import cartesia, deepgram, google, openai, silero, xai
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = logging.getLogger("agent")
@@ -97,6 +98,17 @@ def prewarm(proc: JobProcess):
 server.setup_fnc = prewarm
 
 
+def _load_job_config(ctx: JobContext) -> dict:
+    raw = ctx.job.metadata
+    if not raw:
+        return {}
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        logger.warning("Invalid job metadata, using pipeline fallback")
+        return {}
+
+
 @server.rtc_session(agent_name="voice-agent")
 async def my_agent(ctx: JobContext):
     # Logging setup
@@ -105,6 +117,37 @@ async def my_agent(ctx: JobContext):
         "room": ctx.room.name,
     }
 
+    config = _load_job_config(ctx)
+    mode = config.get("mode", "stt-llm-tts")
+
+    if mode == "audio-to-audio":
+        provider = config.get("provider", "gemini")
+        model = config.get("model")
+        voice = config.get("voiceId")
+        prompt = config.get("systemPrompt") or ""
+
+        if provider == "gemini":
+            kwargs = {
+                "model": model or "gemini-3.1-flash-live-preview",
+                "voice": voice or "Puck",
+            }
+            if prompt:
+                kwargs["instructions"] = prompt
+            llm = google.realtime.RealtimeModel(**kwargs)
+        else:
+            llm = xai.realtime.RealtimeModel(
+                model=model or "grok-voice-think-fast-1.0",
+                voice=voice or "ara",
+            )
+
+        session = AgentSession(llm=llm)
+        await session.start(
+            agent=Agent(instructions=prompt or "You are a helpful voice assistant."),
+            room=ctx.room,
+        )
+        await ctx.connect()
+        return
+
     # Set up a voice AI pipeline using OpenAI, Cartesia, Deepgram, and the LiveKit turn detector
     session = AgentSession(
         # Speech-to-text (STT) is your agent's ears, turning the user's speech into text that the LLM can understand
@@ -112,9 +155,7 @@ async def my_agent(ctx: JobContext):
         stt=deepgram.STT(model="nova-3", language="multi"),
         # Text-to-speech (TTS) is your agent's voice, turning the LLM's text into speech that the user can hear
         # See all available models as well as voice selections at https://docs.livekit.io/agents/models/tts/
-        tts=cartesia.TTS(
-            model="sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"
-        ),
+        tts=cartesia.TTS(model="sonic-3", voice="9626c31c-bec5-4cca-baa8-f8ba9e84c8bc"),
         # VAD and turn detection are used to determine when the user is speaking and when the agent should respond
         # See more at https://docs.livekit.io/agents/build/turns
         turn_detection=MultilingualModel(),
