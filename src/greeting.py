@@ -26,7 +26,7 @@ def greeting_from_config(config: dict[str, Any]) -> tuple[str | None, bool]:
 
 
 def merge_realtime_instructions(system_prompt: str, greeting: str | None) -> str:
-    """Bake speak-first into model instructions — Gemini Live rejects generate_reply."""
+    """Bake speak-first into Agent instructions (Gemini + xAI realtime avoid generate_reply)."""
     base = (system_prompt or "").strip() or DEFAULT_ASSISTANT
     if not greeting:
         return base

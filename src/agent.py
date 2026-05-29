@@ -63,6 +63,13 @@ def _load_job_config(ctx: JobContext) -> dict:
         return {}
 
 
+def _normalize_xai_voice(voice: str | None) -> str:
+    """Studio sends lowercase ids (ara); xAI API expects Ara, Eve, Leo, Rex, Sal."""
+    canonical = {"ara": "Ara", "eve": "Eve", "leo": "Leo", "rex": "Rex", "sal": "Sal"}
+    raw = (voice or "ara").strip()
+    return canonical.get(raw.lower(), raw if raw in canonical.values() else "Ara")
+
+
 def _log_dispatch(config: dict, mode: str) -> None:
     prompt = config.get("systemPrompt") or (config.get("llm") or {}).get("systemPrompt") or ""
     greeting, _ = greeting_from_config(config)
@@ -99,8 +106,8 @@ async def my_agent(ctx: JobContext):
         prompt = config.get("systemPrompt") or ""
         realtime_instructions = merge_realtime_instructions(prompt, greeting)
 
-        voice_name = (voice or "Puck").strip()
         if provider == "gemini":
+            voice_name = (voice or "Puck").strip()
             logger.info("Gemini realtime voice=%s", voice_name)
             llm = google.realtime.RealtimeModel(
                 model=model or "gemini-3.1-flash-live-preview",
@@ -108,18 +115,21 @@ async def my_agent(ctx: JobContext):
                 instructions=realtime_instructions,
             )
         else:
+            grok_model = model or "grok-voice-think-fast-1.0"
+            voice_name = _normalize_xai_voice(voice)
+            logger.info("xAI realtime model=%s voice=%s", grok_model, voice_name)
             llm = xai.realtime.RealtimeModel(
-                model=model or "grok-voice-think-fast-1.0",
-                voice=voice or "ara",
+                model=grok_model,
+                voice=voice_name,
             )
 
         session = AgentSession(llm=llm)
-        # Gemini Live rejects generate_reply; Grok may still use on_enter when speak-first is on.
+        # Realtime models (Gemini + xAI): speak-first via merged instructions only.
         agent = GreetingAgent(
             instructions=realtime_instructions,
             greeting=greeting,
             greeting_interruptible=greeting_interruptible,
-            use_generate_reply=provider != "gemini",
+            use_generate_reply=False,
         )
         await session.start(agent=agent, room=ctx.room)
         logger.info("Realtime session started in %.2fs", time.monotonic() - t0)
