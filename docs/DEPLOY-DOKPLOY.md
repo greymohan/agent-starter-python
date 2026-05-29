@@ -25,10 +25,7 @@ Do **not** use `dev` in Dokploy (`dev` sets idle processes to 0 → cold start e
 
 Production `start` keeps several **prewarmed** worker processes (framework default scales with CPU).
 
-Each idle process loads:
-
-- Silero VAD
-- Multilingual turn detector (ONNX)
+Each idle process preloads **Silero VAD** only. The multilingual turn detector loads on first pipeline job (requires LiveKit job context).
 
 **Small VPS (2 vCPU / 4 GB RAM):** set in Dokploy env:
 
@@ -49,7 +46,7 @@ AGENT_NUM_IDLE_PROCESSES=2
 Worker logs should include:
 
 1. `ready to accept jobs` (or equivalent registration line)
-2. `Prewarm complete: VAD + multilingual turn detector` (per idle process)
+2. `Prewarm complete: VAD` (per idle process)
 3. On first call: `Job mode=...`, and if speak-first is on: `Agent speaks first: greeting`
 
 ## Build note

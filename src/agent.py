@@ -40,9 +40,9 @@ server = AgentServer(**_server_options())
 
 
 def prewarm(proc: JobProcess):
+    # VAD only — MultilingualModel() needs job context (inference_executor).
     proc.userdata["vad"] = silero.VAD.load()
-    proc.userdata["turn_detector"] = MultilingualModel()
-    logger.info("Prewarm complete: VAD + multilingual turn detector")
+    logger.info("Prewarm complete: VAD")
 
 
 server.setup_fnc = prewarm
@@ -115,15 +115,11 @@ async def my_agent(ctx: JobContext):
             tts_cfg.get("voiceId"),
         )
 
-        turn_detection = ctx.proc.userdata.get("turn_detector")
-        if turn_detection is None:
-            turn_detection = MultilingualModel()
-
         session = AgentSession(
             stt=build_stt(stt_cfg),
             llm=build_llm(llm_cfg),
             tts=build_tts(tts_cfg),
-            turn_detection=turn_detection,
+            turn_detection=MultilingualModel(),
             vad=ctx.proc.userdata["vad"],
             preemptive_generation=True,
         )
