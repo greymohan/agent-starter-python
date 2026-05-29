@@ -32,10 +32,11 @@ def merge_realtime_instructions(system_prompt: str, greeting: str | None) -> str
         return base
     return (
         f"{base}\n\n"
-        "# Session start (speak first)\n"
-        "As soon as the call connects, speak aloud immediately. "
-        "Do not wait for the user to talk first.\n"
-        f"Opening line to deliver: {greeting}"
+        "# Session start (speak first — mandatory)\n"
+        "When this session begins, you MUST speak first out loud immediately. "
+        "Do not wait for the user to say hello or make any sound. "
+        "Begin talking as soon as you are connected.\n"
+        f"Say this opening line now: {greeting}"
     )
 
 

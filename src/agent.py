@@ -73,13 +73,24 @@ def _normalize_xai_voice(voice: str | None) -> str:
 def _log_dispatch(config: dict, mode: str) -> None:
     prompt = config.get("systemPrompt") or (config.get("llm") or {}).get("systemPrompt") or ""
     greeting, _ = greeting_from_config(config)
+    conv = config.get("conversation") or {}
     logger.info(
-        "Dispatch mode=%s speak_first=%s system_prompt_chars=%d metadata_keys=%s",
+        "Dispatch mode=%s speak_first=%s system_prompt_chars=%d "
+        "agentSpeaksFirst=%s metadata_keys=%s",
         mode,
         greeting is not None,
         len(prompt),
+        conv.get("agentSpeaksFirst"),
         list(config.keys()),
     )
+    if mode == "audio-to-audio" and "conversation" not in config:
+        logger.warning(
+            "Job metadata missing conversation — agent will wait for user to speak first"
+        )
+    if mode == "audio-to-audio" and not prompt.strip():
+        logger.warning(
+            "Job metadata missing systemPrompt — custom Instructions will not apply"
+        )
 
 
 @server.rtc_session(agent_name="voice-agent")
@@ -132,7 +143,24 @@ async def my_agent(ctx: JobContext):
             use_generate_reply=False,
         )
         await session.start(agent=agent, room=ctx.room)
-        logger.info("Realtime session started in %.2fs", time.monotonic() - t0)
+        logger.info(
+            "Realtime session started in %.2fs (speak_first=%s prompt_chars=%d)",
+            time.monotonic() - t0,
+            greeting is not None,
+            len(prompt),
+        )
+        if greeting:
+            try:
+                await session.generate_reply(
+                    instructions=greeting,
+                    allow_interruptions=greeting_interruptible,
+                )
+                logger.info("Speak-first: generate_reply after session.start")
+            except Exception as exc:
+                logger.info(
+                    "Speak-first: using instructions only (generate_reply: %s)",
+                    exc,
+                )
     else:
         stt_cfg = config.get("stt") or {}
         llm_cfg = config.get("llm") or {}
