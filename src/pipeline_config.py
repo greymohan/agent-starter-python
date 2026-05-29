@@ -84,23 +84,40 @@ def build_stt(stt_cfg: dict[str, Any]):
     return deepgram.STT(model="nova-3", language="en-US")
 
 
+def _llm_reasoning_kwargs(llm_cfg: dict[str, Any]) -> dict[str, str]:
+    effort = llm_cfg.get("reasoningEffort")
+    if effort in ("low", "medium", "high"):
+        return {"reasoning_effort": effort}
+    return {}
+
+
 def build_llm(llm_cfg: dict[str, Any]):
     provider = llm_cfg.get("provider", "openai")
     model_id = llm_cfg.get("model", "gpt-4o-mini")
+    reasoning = _llm_reasoning_kwargs(llm_cfg)
 
     if provider == "grok":
         api_key = os.environ.get("XAI_API_KEY")
         grok_model = model_id if str(model_id).startswith("grok-") else "grok-3-fast"
-        logger.info("Pipeline LLM: xAI model=%s", grok_model)
+        logger.info(
+            "Pipeline LLM: xAI model=%s reasoning=%s",
+            grok_model,
+            reasoning.get("reasoning_effort", "default"),
+        )
         return openai.LLM(
             model=grok_model,
             base_url="https://api.x.ai/v1",
             api_key=api_key,
+            **reasoning,
         )
 
     openai_model = model_id if str(model_id).startswith("gpt-") else "gpt-4o-mini"
-    logger.info("Pipeline LLM: openai model=%s", openai_model)
-    return openai.LLM(model=openai_model)
+    logger.info(
+        "Pipeline LLM: openai model=%s reasoning=%s",
+        openai_model,
+        reasoning.get("reasoning_effort", "default"),
+    )
+    return openai.LLM(model=openai_model, **reasoning)
 
 
 def build_tts(tts_cfg: dict[str, Any]):
