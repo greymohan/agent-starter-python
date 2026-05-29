@@ -15,6 +15,11 @@ ENV PYTHONUNBUFFERED=1
 # expense of a slightly longer build.
 ENV UV_COMPILE_BYTECODE=1
 
+# Turn-detector + Hugging Face models must live under /app so the prod stage includes them.
+ENV HF_HOME=/app/.cache/huggingface
+ENV TORCH_HOME=/app/.cache/torch
+ENV XDG_CACHE_HOME=/app/.cache
+
 # --- Build stage ---
 # Install dependencies, build native extensions, and prepare the application
 FROM base AS build
@@ -49,10 +54,9 @@ RUN uv sync --locked
 # (Excludes files specified in .dockerignore)
 COPY . .
 
-# Pre-download any ML models or files the agent needs
-# This ensures the container is ready to run immediately without downloading
-# dependencies at runtime, which improves startup time and reliability
-RUN uv run "src/agent.py" download-files
+# Pre-download Silero VAD, turn-detector ONNX (model_q8.onnx), etc. into /app/.cache
+RUN mkdir -p /app/.cache/huggingface /app/.cache/torch && \
+    uv run python -m livekit.agents download-files
 
 # --- Production stage ---
 # Build tools (gcc, g++, python3-dev) are not included in the final image

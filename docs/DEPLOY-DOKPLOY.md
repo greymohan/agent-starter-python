@@ -51,4 +51,6 @@ Worker logs should include:
 
 ## Build note
 
-`Dockerfile` runs `uv run src/agent.py download-files` at build time so turn-detector models are baked into the image — required for fast prewarm.
+`Dockerfile` sets `HF_HOME=/app/.cache/huggingface` and runs `uv run python -m livekit.agents download-files` so **turn-detector** `model_q8.onnx` is in the image. If logs show `Could not find file model_q8.onnx`, rebuild with **Clean cache** enabled.
+
+**Gemini Live** does not support `generate_reply` on `gemini-3.1-flash-live-preview` — speak-first is merged into `RealtimeModel` instructions instead.

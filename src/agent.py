@@ -14,7 +14,11 @@ from livekit.agents import (
 from livekit.plugins import silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from greeting import DEFAULT_ASSISTANT, GreetingAgent, greeting_from_config
+from greeting import (
+    GreetingAgent,
+    greeting_from_config,
+    merge_realtime_instructions,
+)
 from pipeline_config import (
     build_llm,
     build_stt,
@@ -93,15 +97,14 @@ async def my_agent(ctx: JobContext):
         model = config.get("model")
         voice = config.get("voiceId")
         prompt = config.get("systemPrompt") or ""
+        realtime_instructions = merge_realtime_instructions(prompt, greeting)
 
         if provider == "gemini":
-            kwargs = {
-                "model": model or "gemini-3.1-flash-live-preview",
-                "voice": voice or "Puck",
-            }
-            if prompt:
-                kwargs["instructions"] = prompt
-            llm = google.realtime.RealtimeModel(**kwargs)
+            llm = google.realtime.RealtimeModel(
+                model=model or "gemini-3.1-flash-live-preview",
+                voice=voice or "Puck",
+                instructions=realtime_instructions,
+            )
         else:
             llm = xai.realtime.RealtimeModel(
                 model=model or "grok-voice-think-fast-1.0",
@@ -109,10 +112,12 @@ async def my_agent(ctx: JobContext):
             )
 
         session = AgentSession(llm=llm)
+        # Gemini Live rejects generate_reply; Grok may still use on_enter when speak-first is on.
         agent = GreetingAgent(
-            instructions=prompt or DEFAULT_ASSISTANT,
+            instructions=realtime_instructions,
             greeting=greeting,
             greeting_interruptible=greeting_interruptible,
+            use_generate_reply=provider != "gemini",
         )
         await session.start(agent=agent, room=ctx.room)
         logger.info("Realtime session started in %.2fs", time.monotonic() - t0)

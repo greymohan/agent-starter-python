@@ -25,8 +25,22 @@ def greeting_from_config(config: dict[str, Any]) -> tuple[str | None, bool]:
     return instructions, interruptible
 
 
+def merge_realtime_instructions(system_prompt: str, greeting: str | None) -> str:
+    """Bake speak-first into model instructions — Gemini Live rejects generate_reply."""
+    base = (system_prompt or "").strip() or DEFAULT_ASSISTANT
+    if not greeting:
+        return base
+    return (
+        f"{base}\n\n"
+        "# Session start (speak first)\n"
+        "As soon as the call connects, speak aloud immediately. "
+        "Do not wait for the user to talk first.\n"
+        f"Opening line to deliver: {greeting}"
+    )
+
+
 class GreetingAgent(Agent):
-    """Uses on_enter so Gemini/Grok realtime actually speaks first (post-start generate_reply is flaky)."""
+    """Pipeline: optional generate_reply on enter. Realtime: greeting is in instructions only."""
 
     def __init__(
         self,
@@ -34,16 +48,22 @@ class GreetingAgent(Agent):
         instructions: str,
         greeting: str | None = None,
         greeting_interruptible: bool = True,
+        use_generate_reply: bool = True,
     ) -> None:
         super().__init__(instructions=instructions or DEFAULT_ASSISTANT)
         self._greeting = greeting
         self._greeting_interruptible = greeting_interruptible
+        self._use_generate_reply = use_generate_reply and greeting is not None
 
     async def on_enter(self) -> None:
-        if not self._greeting:
+        if not self._use_generate_reply:
+            if self._greeting:
+                logger.info(
+                    "Agent speaks first via realtime instructions (no generate_reply)"
+                )
             return
         logger.info(
-            "Agent speaks first via on_enter (interruptible=%s)",
+            "Agent speaks first via on_enter generate_reply (interruptible=%s)",
             self._greeting_interruptible,
         )
         await self.session.generate_reply(
@@ -53,7 +73,7 @@ class GreetingAgent(Agent):
 
 
 async def maybe_speak_first(session: AgentSession, config: dict[str, Any]) -> None:
-    """Legacy fallback — prefer GreetingAgent.on_enter for realtime models."""
+    """Legacy fallback for pipeline sessions."""
     greeting, interruptible = greeting_from_config(config)
     if not greeting:
         return
