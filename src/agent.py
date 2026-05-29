@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 
 from dotenv import load_dotenv
 from livekit.agents import (
@@ -13,6 +14,7 @@ from livekit.agents import (
 from livekit.plugins import silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
+from greeting import maybe_speak_first
 from pipeline_config import (
     build_llm,
     build_stt,
@@ -25,11 +27,22 @@ logger = logging.getLogger("agent")
 load_dotenv(".env.local")
 
 
-server = AgentServer()
+def _server_options() -> dict:
+    """Optional overrides; production `start` already warms idle processes by default."""
+    opts: dict = {}
+    raw = os.environ.get("AGENT_NUM_IDLE_PROCESSES", "").strip()
+    if raw:
+        opts["num_idle_processes"] = max(0, int(raw))
+    return opts
+
+
+server = AgentServer(**_server_options())
 
 
 def prewarm(proc: JobProcess):
     proc.userdata["vad"] = silero.VAD.load()
+    proc.userdata["turn_detector"] = MultilingualModel()
+    logger.info("Prewarm complete: VAD + multilingual turn detector")
 
 
 server.setup_fnc = prewarm
@@ -84,6 +97,7 @@ async def my_agent(ctx: JobContext):
             agent=Agent(instructions=prompt or "You are a helpful voice assistant."),
             room=ctx.room,
         )
+        await maybe_speak_first(session, config)
     else:
         stt_cfg = config.get("stt") or {}
         llm_cfg = config.get("llm") or {}
@@ -101,11 +115,15 @@ async def my_agent(ctx: JobContext):
             tts_cfg.get("voiceId"),
         )
 
+        turn_detection = ctx.proc.userdata.get("turn_detector")
+        if turn_detection is None:
+            turn_detection = MultilingualModel()
+
         session = AgentSession(
             stt=build_stt(stt_cfg),
             llm=build_llm(llm_cfg),
             tts=build_tts(tts_cfg),
-            turn_detection=MultilingualModel(),
+            turn_detection=turn_detection,
             vad=ctx.proc.userdata["vad"],
             preemptive_generation=True,
         )
@@ -115,6 +133,7 @@ async def my_agent(ctx: JobContext):
             agent=Agent(instructions=instructions),
             room=ctx.room,
         )
+        await maybe_speak_first(session, config)
 
 
 if __name__ == "__main__":

@@ -116,6 +116,8 @@ In production, use the `start` command:
 uv run python src/agent.py start
 ```
 
+**Dokploy / VPS:** see [docs/DEPLOY-DOKPLOY.md](docs/DEPLOY-DOKPLOY.md) for replicas, `AGENT_NUM_IDLE_PROCESSES`, and co-location with your LiveKit server.
+
 ## Frontend & Telephony
 
 Get started quickly with our pre-built frontend starter apps, or add telephony support:
