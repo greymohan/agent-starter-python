@@ -1,10 +1,10 @@
 import json
 import logging
 import os
+import time
 
 from dotenv import load_dotenv
 from livekit.agents import (
-    Agent,
     AgentServer,
     AgentSession,
     JobContext,
@@ -14,7 +14,7 @@ from livekit.agents import (
 from livekit.plugins import silero
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
-from greeting import maybe_speak_first
+from greeting import DEFAULT_ASSISTANT, GreetingAgent, greeting_from_config
 from pipeline_config import (
     build_llm,
     build_stt,
@@ -59,17 +59,34 @@ def _load_job_config(ctx: JobContext) -> dict:
         return {}
 
 
+def _log_dispatch(config: dict, mode: str) -> None:
+    prompt = config.get("systemPrompt") or (config.get("llm") or {}).get("systemPrompt") or ""
+    greeting, _ = greeting_from_config(config)
+    logger.info(
+        "Dispatch mode=%s speak_first=%s system_prompt_chars=%d metadata_keys=%s",
+        mode,
+        greeting is not None,
+        len(prompt),
+        list(config.keys()),
+    )
+
+
 @server.rtc_session(agent_name="voice-agent")
 async def my_agent(ctx: JobContext):
     from livekit.plugins import google, xai
 
+    t0 = time.monotonic()
     ctx.log_context_fields = {
         "room": ctx.room.name,
     }
 
     config = _load_job_config(ctx)
     mode = config.get("mode", "stt-llm-tts")
-    logger.info("Job mode=%s metadata_keys=%s", mode, list(config.keys()))
+    _log_dispatch(config, mode)
+
+    greeting, greeting_interruptible = greeting_from_config(config)
+    await ctx.connect()
+    logger.info("Room connected in %.2fs", time.monotonic() - t0)
 
     if mode == "audio-to-audio":
         provider = config.get("provider", "gemini")
@@ -92,12 +109,13 @@ async def my_agent(ctx: JobContext):
             )
 
         session = AgentSession(llm=llm)
-        await ctx.connect()
-        await session.start(
-            agent=Agent(instructions=prompt or "You are a helpful voice assistant."),
-            room=ctx.room,
+        agent = GreetingAgent(
+            instructions=prompt or DEFAULT_ASSISTANT,
+            greeting=greeting,
+            greeting_interruptible=greeting_interruptible,
         )
-        await maybe_speak_first(session, config)
+        await session.start(agent=agent, room=ctx.room)
+        logger.info("Realtime session started in %.2fs", time.monotonic() - t0)
     else:
         stt_cfg = config.get("stt") or {}
         llm_cfg = config.get("llm") or {}
@@ -123,13 +141,13 @@ async def my_agent(ctx: JobContext):
             vad=ctx.proc.userdata["vad"],
             preemptive_generation=True,
         )
-
-        await ctx.connect()
-        await session.start(
-            agent=Agent(instructions=instructions),
-            room=ctx.room,
+        agent = GreetingAgent(
+            instructions=instructions,
+            greeting=greeting,
+            greeting_interruptible=greeting_interruptible,
         )
-        await maybe_speak_first(session, config)
+        await session.start(agent=agent, room=ctx.room)
+        logger.info("Pipeline session started in %.2fs", time.monotonic() - t0)
 
 
 if __name__ == "__main__":
