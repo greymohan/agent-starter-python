@@ -99,10 +99,12 @@ async def my_agent(ctx: JobContext):
         prompt = config.get("systemPrompt") or ""
         realtime_instructions = merge_realtime_instructions(prompt, greeting)
 
+        voice_name = (voice or "Puck").strip()
         if provider == "gemini":
+            logger.info("Gemini realtime voice=%s", voice_name)
             llm = google.realtime.RealtimeModel(
                 model=model or "gemini-3.1-flash-live-preview",
-                voice=voice or "Puck",
+                voice=voice_name,
                 instructions=realtime_instructions,
             )
         else:
